@@ -1,0 +1,281 @@
+def transform_dataset_simple(year,type_year,or_data,transformed_data_sublist,transformed_data):
+    # 初始化結果列表，開始為100和一個空列表，用於存放所有轉換後的條目
+
+    # 遍歷原始數據中的每一條目
+    for entry in or_data:
+        if year == entry[0][0]:
+            transformed_data_sublist.append(entry[1:])
+        # 提取並清理每個字段中的數據，去除空白、引號和逗號
+    transformed_data.append([[year]]+transformed_data_sublist)
+    # 返回轉換後的結果
+
+    return transformed_data,transformed_data_sublist,year
+
+
+def reset_data(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        cc = [line.strip().split() for line in file]
+
+    # 根據中位數索引決定每個列表的期望長度
+    med_index = len(cc) // 2
+    data_length = len(cc[med_index])
+
+    # 找到長度不符合期望的列表的索引
+    indices_to_remove = [index for index, list01 in enumerate(cc) if len(list01) != data_length]
+
+    # 從後向前刪除，避免影響索引
+    for index in reversed(indices_to_remove):
+        del cc[index]
+
+    # 打印過濾後的數據
+    ##print("new",cc[1:])
+    return cc[1:]
+
+
+def process_year_data(data_list):
+
+    try:
+            # 嘗試將第一個元素轉換為整數
+            item_data = int(data_list[0])
+
+    except ValueError:# 第一個不可轉為整數
+            # 如果轉換失敗，檢查是否有第二個元素
+            if len(data_list) > 1:
+                item_data = int(data_list[1])
+
+            else:
+                # 如果沒有第二個元素，可能需要處理或者報錯
+                print(f"Error:  {data_list} 不再第二元素")
+
+    return item_data
+
+
+def process_financial_data(file_path):
+    structured_data = []
+    current_year_data = []
+    structured_data_set = {}
+    tmp_list = [] 
+    all_numeric_value =[]
+    current_year01 = None
+    current_year = None
+    type = 0
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            clean_list = reset_data(file_path)
+
+            for line in clean_list:
+                
+                if ('年' in line[0] and '月'in line[0])  or ('年' in line[0] and '季' in line[0]):
+
+                    type = 1
+
+                    if '年' in line[0] and '月' in line[0]:
+                        line[0] = line[0].replace('月', ' ')
+
+            
+                    elif '年'in line[0]  and '季' in line[0]:
+                        line[0] = line[0].replace('季', ' ')
+                        line[0] = line[0].replace('第', ' ')
+
+                    year_month = line[0].split('年')
+                    current_year01 = year_month[0]
+                    line[0] = year_month[-1] 
+                    line.insert(0,[current_year01])
+                    tmp_list.append(line)
+
+            if type == 1 :
+
+                transformed_data=[]
+                fin_year= 0
+                for type_year in tmp_list:
+
+                    if fin_year == type_year[0][0]:
+                        continue
+                    
+                    transformed_data_sublist=[]
+                    transformed_data,transformed_data_sublist,fin_year = transform_dataset_simple(type_year[0][0], type_year ,tmp_list,transformed_data_sublist,transformed_data)
+                structured_data = transformed_data
+
+    except FileNotFoundError:
+        return f"Error: 文件 {file_path} 無法找到"
+    except Exception as e:
+        return f"無法處理該檔案： {str(e)}"
+
+    return structured_data
+
+def convert_to_floats_SUB(str_list):
+    converted_floats = []
+    for s in str_list:
+        if isinstance(s, str):  # 检查 s 是否为字符串
+            cleaned_str = s.replace('"', '').replace(',', '')
+            float_value = float(cleaned_str)
+            converted_floats.append(float_value)
+        else:
+            print("跳過缺少值:", s)
+    return converted_floats
+
+def convert_to_floats(str_list):
+    if all(isinstance(item, str) for item in str_list):  # 检查所有元素是否为字符串
+        converted_floats = convert_to_floats_SUB(str_list)
+    else:
+        print("输入列表包含非字符串元素。")
+    return converted_floats
+
+
+
+from functools import reduce
+
+def convert_to_floats(str_list):
+    # 使用 lambda 函數將字符串清理和轉換為浮點數
+    clean_convert = lambda s: float(s.replace('"', '').replace(',', ''))
+    return list(map(clean_convert, filter(lambda x: isinstance(x, str), str_list)))
+
+def wide_range_cal_data(str_range_data, index):
+    try:
+        trans_value = convert_to_floats(str_range_data)
+        if index >= len(trans_value):
+            raise IndexError("指定索引超出長度")
+
+        # 使用 reduce 計算平均值
+        mean = reduce(lambda x, y: x + y, trans_value) / len(trans_value)
+        sorted_values = sorted(trans_value)
+        median = sorted_values[len(sorted_values) // 2]
+        q1 = sorted_values[len(sorted_values) // 4]
+        q3 = sorted_values[(3 * len(sorted_values)) // 4]
+        min_value = min(sorted_values)
+        max_value = max(sorted_values)
+
+        # 計算異常值
+        iqr = q3 - q1
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+        outliers = list(filter(lambda x: x < lower_bound or x > upper_bound, sorted_values))
+
+        return mean, median, q1, q3, min_value, max_value, outliers
+    except Exception as e:
+        print("函式執行錯誤:", e)
+        return None, None, None, None, None, None, None
+
+
+#目的：
+def find_year_range_index(data,year): #找出該行索引\ #輸入的年
+    # 尋找包含index的子列表索引
+    data_list_index1 = -1
+    for sublist in data:
+        data_list_index1 += 1
+        if year in sublist:
+            data_list_index2 = sublist.index(year)
+            break
+    return data_list_index1,data_list_index2
+
+
+def find_year_range_exist(data,year): #找出是存在該年
+    data_list_index1 = -1
+
+    for sublist in data:
+        data_list_index1 += 1
+        if year in sublist:
+            data_list_index2 = data.index(sublist)
+            return True
+        
+    return False
+
+
+def set_input(year_data_set,input_year): #data1 adata2
+    gpt_exist = False
+    unemployment_exist = False
+
+    # 初始化变量，防止 UnboundLocalError
+    Workforce_mean = Workforce_q2 = Workforce_min_value = Workforce_max_values = None
+    gdp_mean = gdp_q2 = gdp_min_value = gdp_max_values = None
+    unemployment_mean = unemployment_q2 = unemployment_value = unemployment_max_values = None
+
+    #取資料
+    gdp_growth_data = process_financial_data('國民所得統計常用資料.txt')
+    unemployment_data = process_financial_data('人力資源主要指標.txt')
+    try:
+        #找年份索引#某行#某位置
+        gdp_growth_data_list_year_index1,gdp_growth_data_list_data_index2 = find_year_range_index(gdp_growth_data,[str(input_year)]) #找年分
+        unemployment_data_list_year_index1,unemployment_data_list_index2 = find_year_range_index(unemployment_data,[str(input_year)])#找年分
+        gpt_exist = unemployment_exist = True #是否同年份
+        print(f"{input_year}年份勞動力與{input_year}年份就業與國民所得重要指標資料讀取")
+    except:
+        #若在其中
+        if find_year_range_exist(gdp_growth_data,[str(input_year)]):
+            gpt_exist = True
+            print(f"{input_year}年份勞動力不存在")
+        elif find_year_range_exist(unemployment_data,[str(input_year)]):
+            unemployment_exist = True
+            print(f"{input_year}年國民所得重要指標資料不存在")
+        else:
+            print(f"{input_year}年份勞動力與{input_year}年份就業與國民所得重要指標資料不存在")
+    finally:    
+            print(f"年份{input_year}已輸入")
+
+
+    if gpt_exist:
+        
+        gdp_growth_range_data= gdp_growth_data[gdp_growth_data_list_year_index1][gdp_growth_data_list_data_index2 +1]
+        gdp_mean, gdp_q2, gdp_min_value, gdp_max_values = wide_range_cal_data(gdp_growth_range_data,4)
+        
+
+    if unemployment_exist:   
+        unemployment_rate_data= unemployment_data[unemployment_data_list_year_index1][unemployment_data_list_index2 +1]
+        Workforce_mean, Workforce_q2, Workforce_min_value, Workforce_max_values = wide_range_cal_data(unemployment_rate_data,3)
+        unemployment_mean, unemployment_q2,unemployment_value, unemployment_max_values = wide_range_cal_data(unemployment_rate_data,5)
+    
+    #同年份
+    if gpt_exist == True and unemployment_exist == True:
+
+        year_data_set[input_year] = {
+                'GDP':{'中位數':gdp_mean,'平均值':gdp_q2,'最大數':gdp_min_value,'最小數':gdp_max_values},
+                '勞動力':{'中位數':Workforce_mean,'平均值': Workforce_q2,'最大數':Workforce_min_value,'最小數': Workforce_max_values},
+                '失業率':{'中位數':unemployment_mean,'平均值':unemployment_q2,'最大數':unemployment_value,'最小數':unemployment_max_values}}
+    
+    elif gpt_exist == True and unemployment_exist == False:
+        year_data_set[input_year] = { 
+                'GDP':{'無資料'},
+                '勞動力':{'中位數':Workforce_mean,'平均值': Workforce_q2,'最大數':Workforce_min_value,'最小數': Workforce_max_values},
+                '失業率':{'中位數':unemployment_mean,'平均值':unemployment_q2,'最大數':unemployment_value,'最小數':unemployment_max_values}}
+        print(f"年份勞動力與就業年份{input_year}資料不存在")
+
+    elif gpt_exist == False and unemployment_exist == True: 
+        year_data_set[input_year] = {
+                'GDP':{'中位數':gdp_mean,'平均值':gdp_q2,'最大數':gdp_min_value,'最小數':gdp_max_values},
+                '勞動力':{'無資料'},
+                '失業率':{'無資料'}}
+        print(f"年份勞動力與就業年份{input_year}資料不存在")
+    else:
+        year_data_set[input_year] = {
+                'GDP':{'無資料'},
+                '勞動力':{'無資料'},
+                '失業率':{'無資料'}}
+        
+    return year_data_set
+
+def main():
+        try:
+            input01 = int(input("開始範圍："))
+            input02 = int(input("結束範圍："))
+
+            sorce = input01
+            range_year = [sorce] 
+            year_data_set  = {}
+            
+
+            #顯示年份列表
+            for i in range(input02-input01):
+                sorce +=1
+                range_year.append(sorce)
+
+            
+            for input_year in range_year:
+                year_data_set = set_input(year_data_set,input_year)
+
+            print("year_data_set",year_data_set)
+        #年份不再範圍無資料
+        except ValueError:
+             print("輸入的數值不在範圍內")
+
+main()
