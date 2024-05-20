@@ -1,0 +1,139 @@
+import matplotlib.pyplot as plt
+
+def reset_data(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        lines = [line.strip() for line in file if line.strip()]
+    
+    # 清理數據，過濾掉長度不符合的行
+    data_length = len(lines[len(lines) // 2].split())
+    cleaned_data = [line for line in lines if len(line.split()) == data_length]
+    
+    return cleaned_data
+
+
+def process_year_data(data_list):
+    try:
+        item_data = int(data_list[0])
+    except ValueError:
+        if len(data_list) > 1:
+            item_data = int(data_list[1])
+        else:
+            print(f"Error: {data_list} 沒有可轉換為整數的元素")
+    return item_data
+
+def process_data_with_join(line,sign):
+        line = line.strip()
+        data_items = line.split()
+        joined_line = sign.join(data_items)
+        return [joined_line]
+
+def recursive_parse_data(file_path):
+    structured_data = {}
+    current_year_data = []
+    current_year = None
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                line.join(line)
+                print('line',line)
+                if '年' in line:
+                    if current_year_data:
+                        structured_data[current_year] = current_year_data
+                    current_year_noyear = line.replace('年', '').split()
+                    current_year = process_year_data(current_year_noyear)
+                    current_year_data = []
+                elif '月' in line or '季' in line:
+                    parts = line.split()
+                    if '月' in parts[0]:
+                        parts = parts[1:]
+                    current_year_data.append([int(x) for x in parts[1:]])
+            if current_year_data:
+                structured_data[current_year] = current_year_data
+    except FileNotFoundError:
+        print("指定的文件未找到。請確認文件路徑是否正確。")
+    except Exception as e:
+        print(f"解析文件時出現錯誤: {e}")
+    return structured_data
+
+def calculate_statistics(data):
+    if not data:
+        return {'mean': None, 'median': None, 'min': None, 'max': None}
+    
+    mean = sum(data) / len(data)
+    sorted_data = sorted(data)
+    median = sorted_data[len(data) // 2] if len(data) % 2 != 0 else (sorted_data[len(data) // 2 - 1] + sorted_data[len(data) // 2]) / 2.0
+    min_value = min(data)
+    max_value = max(data)
+    return {'mean': mean, 'median': median, 'min': min_value, 'max': max_value}
+
+def recursive_calculate_statistics(data, keys=None, index=0, statistics=None):
+    if statistics is None:
+        statistics = {}
+    if keys is None:
+        keys = list(data.keys())
+    if index >= len(keys):
+        return statistics
+    
+    year = keys[index]
+    year_data = []
+    for values in data[year]:
+        year_data.extend(values)
+    stats = calculate_statistics(year_data)
+    statistics[year] = stats
+    
+    return recursive_calculate_statistics(data, keys, index + 1, statistics)
+
+def plot_data(year_data_set, num):
+    years = sorted(year_data_set.keys())
+    gdp_means = [year_data_set[year]['GDP']['mean'] if 'GDP' in year_data_set[year] and year_data_set[year]['GDP'] != {'無資料'} else None for year in years]
+    workforce_means = [year_data_set[year]['勞動力']['mean'] if '勞動力' in year_data_set[year] and year_data_set[year]['勞動力'] != {'無資料'} else None for year in years]
+    unemployment_means = [year_data_set[year]['失業率']['mean'] if '失業率' in year_data_set[year] and year_data_set[year]['失業率'] != {'無資料'} else None for year in years]
+    plt.figure(figsize=(10, 6))
+    if num == 1:
+        plt.plot(years, gdp_means, marker='o', label='GDP 平均值')
+        plt.title('GDP 平均值')
+        plt.xlabel('年份')
+        plt.ylabel('值')
+    elif num == 2:
+        plt.plot(years, workforce_means, marker='o', label='勞動力 平均值')
+        plt.title('勞動力 平均值')
+        plt.xlabel('年份')
+        plt.ylabel('值')
+    elif num == 3:
+        plt.plot(years, unemployment_means, marker='o', label='失業率 平均值')
+        plt.title('失業率 平均值')
+        plt.xlabel('年份')
+        plt.ylabel('值')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def main():
+    try:
+        input01 = int(input("開始範圍："))
+        input02 = int(input("結束範圍："))
+        num = int(input("1:GDP, 2:勞動力, 3:失業率:"))
+
+        gdp_data = recursive_parse_data('勞動力與就業.txt')
+        people_data = recursive_parse_data('國民所得重要指標.txt')
+        print('gdp_data ',gdp_statistics )
+
+        gdp_statistics = recursive_calculate_statistics(gdp_data)
+        people_statistics = recursive_calculate_statistics(people_data)
+        print('gdp_statistics ',gdp_statistics )
+
+        if num == 1:
+            plot_data(gdp_statistics, num)
+        elif num == 2:
+            plot_data(people_statistics, num)
+        elif num == 3:
+            plot_data(gdp_statistics, num)
+    except ValueError:
+        print("輸入的數值不在範圍內")
+    except Exception as e:
+        print(f"發生錯誤: {e}")
+
+main()
