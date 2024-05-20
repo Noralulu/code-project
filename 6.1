@@ -1,0 +1,198 @@
+import matplotlib.pyplot as plt
+
+def transform_dataset_simple(year, type_year, or_data, transformed_data_sublist, transformed_data):
+    for entry in or_data:
+        if year == entry[0][0]:
+            transformed_data_sublist.append(entry[1:])
+    transformed_data.append([[year]] + transformed_data_sublist)
+    return transformed_data, transformed_data_sublist, year
+
+def reset_data(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        lines = [line.strip() for line in file if line.strip()]
+    
+    # 清理數據，過濾掉長度不符合的行
+    data_length = len(lines[len(lines) // 2].split())
+    cleaned_data = [line for line in lines if len(line.split()) == data_length]
+    
+    return cleaned_data
+
+def process_year_data(data_list):
+    try:
+        item_data = int(data_list[0])
+    except ValueError:
+        if len(data_list) > 1:
+            item_data = int(data_list[1])
+        else:
+            raise ValueError(f"Error:  {data_list} 不再第二元素")
+    return item_data
+
+def process_financial_data(file_path):
+    try:
+        clean_list = reset_data(file_path)
+        tmp_list = []
+
+        for line in clean_list:
+            parts = line.split()
+            if '年' in parts[0]:
+                year, period = parts[0].split('年')
+                parts[0] = period.replace('月', '').replace('季', '').replace('第', '')
+                parts.insert(0, [year])
+            tmp_list.append(parts)
+
+        transformed_data = []
+        fin_year = 0
+        for type_year in tmp_list:
+            if fin_year == type_year[0][0]:
+                continue
+
+            transformed_data_sublist = []
+            transformed_data, transformed_data_sublist, fin_year = transform_dataset_simple(
+                type_year[0][0], type_year, tmp_list, transformed_data_sublist, transformed_data
+            )
+        return transformed_data
+
+    except FileNotFoundError:
+        return f"Error: 文件 {file_path} 無法找到"
+    except Exception as e:
+        return f"無法處理該檔案： {str(e)}"
+
+def convert_to_floats(str_list):
+    try:
+        return [float(s.replace('"', '').replace(',', '')) for s in str_list if isinstance(s, str)]
+    except ValueError as e:
+        print("跳過無法轉換為浮點數的值:", e)
+        return []
+
+def wide_range_cal_data(str_range_data, index):
+    try:
+        trans_value = convert_to_floats(str_range_data)
+        if len(trans_value) <= index:
+            raise IndexError("指定索引超出長度")
+
+        date_values = [trans_value[index]] if index < len(trans_value) else []
+
+        if not date_values:
+            raise ValueError("數據為空<無法計算")
+
+        mean = sum(date_values) / len(date_values)
+        sorted_values = sorted(date_values)
+        q2 = sorted_values[len(sorted_values) // 2]
+        min_value = min(date_values)
+        max_values = max(date_values)
+
+        return mean, q2, min_value, max_values
+    except Exception as e:
+        print("函式執行錯誤:", e)
+        return None, None, None, None
+
+def find_year_range_index(data, year):
+    for index1, sublist in enumerate(data):
+        if year in sublist:
+            index2 = sublist.index(year)
+            return index1, index2
+    return -1, -1
+
+def find_year_range_exist(data, year):
+    return any(year in sublist for sublist in data)
+
+def set_input(year_data_set, input_year):
+    gdp_exist, unemployment_exist = False, False
+    Workforce_mean = Workforce_q2 = Workforce_min_value = Workforce_max_values = None
+    gdp_mean = gdp_q2 = gdp_min_value = gdp_max_values = None
+    unemployment_mean = unemployment_q2 = unemployment_value = unemployment_max_values = None
+
+    gdp_growth_data = process_financial_data('/mnt/data/國民所得統計常用資料.xlsx')
+    unemployment_data = process_financial_data('/mnt/data/人力資源主要指標.txt')
+    try:
+        gdp_index1, gdp_index2 = find_year_range_index(gdp_growth_data, [str(input_year)])
+        unemployment_index1, unemployment_index2 = find_year_range_index(unemployment_data, [str(input_year)])
+        gdp_exist = unemployment_exist = True
+    except:
+        if find_year_range_exist(gdp_growth_data, [str(input_year)]):
+            gdp_exist = True
+        if find_year_range_exist(unemployment_data, [str(input_year)]):
+            unemployment_exist = True
+
+    if gdp_exist:
+        gdp_data = gdp_growth_data[gdp_index1][gdp_index2 + 1]
+        gdp_mean, gdp_q2, gdp_min_value, gdp_max_values = wide_range_cal_data(gdp_data, 4)
+
+    if unemployment_exist:
+        unemployment_data = unemployment_data[unemployment_index1][unemployment_index2 + 1]
+        Workforce_mean, Workforce_q2, Workforce_min_value, Workforce_max_values = wide_range_cal_data(unemployment_data, 3)
+        unemployment_mean, unemployment_q2, unemployment_value, unemployment_max_values = wide_range_cal_data(unemployment_data, 5)
+
+    if gdp_exist and unemployment_exist:
+        year_data_set[input_year] = {
+            'GDP': {'中位數': gdp_mean, '平均值': gdp_q2, '最大數': gdp_min_value, '最小數': gdp_max_values},
+            '勞動力': {'中位數': Workforce_mean, '平均值': Workforce_q2, '最大數': Workforce_min_value, '最小數': Workforce_max_values},
+            '失業率': {'中位數': unemployment_mean, '平均值': unemployment_q2, '最大數': unemployment_value, '最小數': unemployment_max_values}
+        }
+    elif gdp_exist and not unemployment_exist:
+        year_data_set[input_year] = {
+            'GDP': {'中位數': gdp_mean, '平均值': gdp_q2, '最大數': gdp_min_value, '最小數': gdp_max_values},
+            '勞動力': {'無資料'},
+            '失業率': {'無資料'}
+        }
+    elif not gdp_exist and unemployment_exist:
+        year_data_set[input_year] = {
+            'GDP': {'無資料'},
+            '勞動力': {'中位數': Workforce_mean, '平均值': Workforce_q2, '最大數': Workforce_min_value, '最小數': Workforce_max_values},
+            '失業率': {'中位數': unemployment_mean, '平均值': unemployment_q2, '最大數': unemployment_value, '最小數': unemployment_max_values}
+        }
+    else:
+        year_data_set[input_year] = {
+            'GDP': {'無資料'},
+            '勞動力': {'無資料'},
+            '失業率': {'無資料'}
+        }
+    return year_data_set
+
+def plot_data(year_data_set, num):
+    years = year_data_set.keys()
+    gdp_means = [year_data_set[year]['GDP']['平均值'] if 'GDP' in year_data_set[year] and year_data_set[year]['GDP'] != {'無資料'} else None for year in years]
+    workforce_means = [year_data_set[year]['勞動力']['平均值'] if '勞動力' in year_data_set[year] and year_data_set[year]['勞動力'] != {'無資料'} else None for year in years]
+    unemployment_means = [year_data_set[year]['失業率']['平均值'] if '失業率' in year_data_set[year] and year_data_set[year]['失業率'] != {'無資料'} else None for year in years]
+
+    plt.figure(figsize=(15, 5))
+    if num == 1:
+        plt.plot(years, gdp_means, marker='o', label='GDP 平均值')
+        plt.title('GDP 平均值')
+        plt.xlabel('年份')
+        plt.ylabel('值')
+        plt.legend()
+        plt.grid(True)
+    elif num == 2:
+        plt.plot(years, workforce_means, marker='o', label='勞動力 平均值')
+        plt.title('勞動力 平均值')
+        plt.xlabel('年份')
+        plt.ylabel('值')
+        plt.legend()
+        plt.grid(True)
+    elif num == 3:
+        plt.plot(years, unemployment_means, marker='o', label='失業率 平均值')
+        plt.title('失業率 平均值')
+        plt.xlabel('年份')
+        plt.ylabel('值')
+        plt.legend()
+        plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+def main():
+    try:
+        input01 = int(input("開始範圍："))
+        input02 = int(input("結束範圍："))
+        num = int(input("1:GDP, 2:勞動力, 3:失業率:"))
+
+        year_data_set = {}
+
+        for input_year in range(input01, input02 + 1):
+            year_data_set = set_input(year_data_set, input_year)
+
+        plot_data(year_data_set, num)
+    except ValueError:
+        print("輸入的數值不在範圍內")
+
+main()
