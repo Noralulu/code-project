@@ -1,0 +1,631 @@
+import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
+
+# 設置字體為SimHei
+plt.rcParams['font.sans-serif'] = ['SimHei']  # 用於顯示中文
+plt.rcParams['axes.unicode_minus'] = False    # 用於顯示負號
+
+def process_year_data(data_list):
+    # 去除所有非数字和小数点字符
+    data_list = [''.join(filter(lambda x: x.isdigit() or x == '.', item)) for item in data_list]
+    month_mapping = {
+        '1月': '1', '2月': '2', '3月': '3', '4月': '4', '5月': '5',
+        '6月': '6', '7月': '7', '8月': '8', '9月': '9', '10月': '10',
+        '11月': '11', '12月': '12',
+        '1季': '1', '2季': '2', '3季': '3', '4季': '4'
+    }
+    data_list = [month_mapping.get(item, item) for item in data_list]
+    data_list = [item for item in data_list if item]  # 去除空字符串
+
+    try:
+        item_data = list(map(float, data_list))
+    except ValueError:
+        print(f"Error: {data_list} cannot be converted to numbers")
+        item_data = None
+    return item_data
+
+
+def check_line(joined_line):
+    if isinstance(joined_line, list):
+        joined_line = " ".join(map(str, joined_line))
+    
+    if isinstance(joined_line, str):
+        if '年' in joined_line or '月' in joined_line or '季' in joined_line:
+            print(f'{joined_line}文字未清除消除')
+        else:
+            print('資料成功處理')
+    else:
+        print('資料成功處理 (非字符串)')
+
+def recursive_parse_data(file_path):
+    structured_data = {}
+    current_year_data = []
+    current_year = None
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                line = line.strip()
+                if '年' in line:
+                    if current_year_data:
+                        structured_data[str(current_year)] = current_year_data
+                    current_year_noyear = line.replace('年', '').split()
+                    current_year = process_year_data(current_year_noyear)
+                    current_year = "".join(map(str, current_year))
+                    current_year_data = []
+                elif '月' in line or '季' in line:
+                    parts = line.split()
+                    parts = process_year_data(parts)
+                    if parts is not None:
+                        current_year_data.append(parts)
+                    check_line(parts)
+            if current_year_data:
+                structured_data[str(current_year)] = current_year_data
+    except FileNotFoundError:
+        print("指定的文件未找到。請確認文件路徑是否正確。")
+    except Exception as e:
+        print(f"解析文件時出現錯誤: {e}")
+    #print("structured_data",structured_data)
+    return structured_data
+
+def calculate_statistics(data):
+    #print("calculate_statistics",data)
+    if not data:
+        return {'平均值': None, '中位數': None, '最小數': None, '最大數': None}
+    
+    mean = sum(data) / len(data)
+    sorted_data = sorted(data)
+    median = sorted_data[len(data) // 2] if len(data) % 2 != 0 else (sorted_data[len(data) // 2 - 1] + sorted_data[len(data) // 2]) / 2.0
+    min_value = min(data)
+    max_value = max(data)
+    return {'平均值': mean, '中位數': median, '最小數': min_value, '最大數': max_value}
+
+def recursive_calculate_statistics(data, column):
+    statistics = {}
+    for year, year_data in data.items():
+        column_data = [values[column] for values in year_data]
+        statistics[year] = calculate_statistics(column_data)
+    return statistics
+
+def merge_dictionaries(*dicts):
+    merged_dict = {}
+    for dictionary in dicts:
+        for key, value in dictionary.items():
+            if key not in merged_dict:
+                merged_dict[key] = {}
+            for subkey, subvalue in value.items():
+                merged_dict[key][subkey] = subvalue
+    return merged_dict
+
+def rename_subkeys(dictionary, key_mapping):
+    for key in dictionary.keys():
+        if isinstance(dictionary[key], dict):
+            for subkey in list(dictionary[key].keys()):
+                if subkey in key_mapping:
+                    dictionary[key][key_mapping[subkey]] = dictionary[key].pop(subkey)
+    return dictionary
+
+def restructure_data(data):
+    restructured = {}
+    for category, years in data.items():
+        for year, stats in years.items():
+            if year not in restructured:
+                restructured[year] = {}
+            restructured[year][category] = stats
+    return restructured
+
+
+def process_data_with_join01(data):
+    processed_lines = []
+    for line in data:
+        line = line.strip()
+        if not line:
+            continue
+        data_items = line.split()
+        joined_line = " ".join(data_items)
+        processed_lines.append(joined_line)
+    return processed_lines
+def transform_dataset_simple01(year, type_year, or_data, transformed_data_sublist, transformed_data):
+    for entry in or_data:
+        if year == entry[0][0]:
+            transformed_data_sublist.append(entry[1:])
+    transformed_data.append([[year]] + transformed_data_sublist)
+    return transformed_data, transformed_data_sublist, year
+
+def reset_data01(file_path):
+    with open(file_path, 'r', encoding='utf-8') as file:
+        lines = [line.strip() for line in file if line.strip()]
+    
+    # 清理數據，過濾掉長度不符合的行
+    data_length = len(lines[len(lines) // 2].split())
+    cleaned_data = [line for line in lines if len(line.split()) == data_length]
+    
+    return cleaned_data
+
+def process_financial_data01(file_path):
+    try:
+        clean_list = reset_data01(file_path)
+        tmp_list = []
+        for line in clean_list:
+            parts = line.split()
+            if '年' in parts[0]:
+                year, period = parts[0].split('年')
+                parts[0] = period.replace('月', '').replace('季', '').replace('第', '')
+                parts.insert(0, [year])
+            tmp_list.append(parts)
+        transformed_data = []
+        fin_year = 0
+        for type_year in tmp_list:
+            if fin_year == type_year[0][0]:
+                continue
+            transformed_data_sublist = []
+            transformed_data, transformed_data_sublist, fin_year = transform_dataset_simple01(
+                type_year[0][0], type_year, tmp_list, transformed_data_sublist, transformed_data
+            )
+        return transformed_data
+    except FileNotFoundError:
+        return f"Error: 文件 {file_path} 無法找到"
+    except Exception as e:
+        return f"無法處理該檔案： {str(e)}"
+
+def convert_to_floats_SUB01(str_list):
+    converted_floats = []
+    for s in str_list:
+        if isinstance(s, str):  # 检查 s 是否为字符串
+            cleaned_str = s.replace('"', '').replace(',', '')
+            float_value = float(cleaned_str)
+            converted_floats.append(float_value)
+        else:
+            print("跳過缺少值:", s)
+    return converted_floats
+
+def convert_to_floats01(str_list):
+    converted_floats = []
+    for s in str_list:
+        if isinstance(s, str):
+            cleaned_str = s.replace('"', '').replace(',', '')
+            float_value = float(cleaned_str)
+            converted_floats.append(float_value)
+        else:
+            print("跳過缺少值:", s)
+    return converted_floats
+
+def wide_range_cal_data01(str_range_data, index):
+    try:
+        trans_value = convert_to_floats01(str_range_data)
+        if len(trans_value) <= index:
+            raise IndexError("指定索引超出長度")
+        date_values = [trans_value[index]] if index < len(trans_value) else []
+        if not date_values:
+            raise ValueError("數據為空<無法計算")
+        mean = sum(date_values) / len(date_values)
+        sorted_values = sorted(date_values)
+        q2 = sorted_values[len(sorted_values) // 2]
+        min_value = min(date_values)
+        max_values = max(date_values)
+        return mean, q2, min_value, max_values
+    except Exception as e:
+        print("函式執行錯誤:", e)
+        return None, None, None, None
+
+
+#目的：
+def find_year_range_index01(data,year): #找出該行索引\ #輸入的年
+    # 尋找包含index的子列表索引
+    data_list_index1 = -1
+    for sublist in data:
+        data_list_index1 += 1
+        if year in sublist:
+            data_list_index2 = sublist.index(year)
+            break
+    return data_list_index1,data_list_index2
+
+def find_year_range_exist01(data,year): #找出是存在該年nji3up3
+    data_list_index1 = -1
+    for sublist in data:
+        data_list_index1 += 1
+        if year in sublist:
+            data_list_index2 = data.index(sublist)
+            return True
+        
+    return False
+
+def set_input01(year_data_set, input_year):  # data1 adata2
+    gdp_exist = False
+    unemployment_exist = False
+    # 初始化变量，防止 UnboundLocalError
+    gdp_mean = gdp_median = gdp_min_value = gdp_max_value = None
+    workforce_mean = workforce_median = workforce_min_value = workforce_max_value = None
+    unemployment_mean = unemployment_median = unemployment_min_value = unemployment_max_value = None
+
+    # 取資料
+    gdp_growth_data = process_financial_data01('國民所得統計常用資料.txt')
+    unemployment_data = process_financial_data01('人力資源主要指標.txt')
+
+    try:
+        # 找年份索引
+        gdp_growth_data_list_year_index1, gdp_growth_data_list_data_index2 = find_year_range_index01(gdp_growth_data, [str(input_year)])
+        unemployment_data_list_year_index1, unemployment_data_list_index2 = find_year_range_index01(unemployment_data, [str(input_year)])
+        gdp_exist = unemployment_exist = True  # 是否同年份
+        print(f"{input_year}年份勞動力與{input_year}年份就業與國民所得重要指標資料讀取")
+    except:
+        if find_year_range_exist01(gdp_growth_data, [str(input_year)]):
+            gdp_exist = True
+            print(f"{input_year}年份勞動力資料不存在")
+        elif find_year_range_exist01(unemployment_data, [str(input_year)]):
+            unemployment_exist = True
+            print(f"{input_year}年國民所得重要指標資料不存在")
+        else:
+            print(f"{input_year}年份勞動力與{input_year}年份就業與國民所得重要指標資料不存在")
+    finally:
+        print(f"年份{input_year}已輸入")
+
+    if gdp_exist:
+        gdp_growth_range_data = gdp_growth_data[gdp_growth_data_list_year_index1][gdp_growth_data_list_data_index2 + 1]
+        gdp_mean, gdp_median, gdp_min_value, gdp_max_value = wide_range_cal_data01(gdp_growth_range_data, 4)
+        growth_rate_mean, growth_rate_median, growth_rate_min_value, growth_rate_max_value = wide_range_cal_data01(gdp_growth_range_data, 3)
+        person_gdp_mean, person_gdp_median, person_gdp_min, person_gdp_max = wide_range_cal_data01(gdp_growth_range_data, 6)
+        person_gni_mean, person_gni_median, person_gni_min, person_gni_max = wide_range_cal_data01(gdp_growth_range_data, 10)
+        gni_mean, gni_median, gni_min, gni_max = wide_range_cal_data01(gdp_growth_range_data, 8)
+        exchange_rate_mean, exchange_rate_median, exchange_rate_min, exchange_rate_max = wide_range_cal_data01(gdp_growth_range_data, 2)
+        income_per_person_mean, income_per_person_median, income_per_person_min, income_per_person_max = wide_range_cal_data01(gdp_growth_range_data, 14)
+
+    if unemployment_exist:
+        unemployment_rate_data = unemployment_data[unemployment_data_list_year_index1][unemployment_data_list_index2 + 1]
+        unemployment_rate_data = unemployment_data[unemployment_data_list_year_index1][unemployment_data_list_index2 + 1]
+        workforce_mean, workforce_median, workforce_min_value, workforce_max_value = wide_range_cal_data01(unemployment_rate_data, 3)
+        population_above_15_mean, population_above_15_median, population_above_15_min, population_above_15_max = wide_range_cal_data01(unemployment_rate_data, 2)
+        employed_population_mean, employed_population_median, employed_population_min, employed_population_max = wide_range_cal_data01(unemployment_rate_data, 4)
+        unemployed_population_mean, unemployed_population_median, unemployed_population_min, unemployed_population_max = wide_range_cal_data01(unemployment_rate_data, 5)
+        population_above_15_percent_mean, population_above_15_percent_median, population_above_15_percent_min, population_above_15_percent_max = wide_range_cal_data01(unemployment_rate_data, 6)
+        workforce_percent_mean, workforce_percent_median, workforce_percent_min, workforce_percent_max = wide_range_cal_data01(unemployment_rate_data, 7)
+        labor_force_participation_rate_mean, labor_force_participation_rate_median, labor_force_participation_rate_min, labor_force_participation_rate_max = wide_range_cal_data01(unemployment_rate_data, 8)
+        employed_population_percent_mean, employed_population_percent_median, employed_population_percent_min, employed_population_percent_max = wide_range_cal_data01(unemployment_rate_data, 9)
+        employed_population_above_15_percent_mean, employed_population_above_15_percent_median, employed_population_above_15_percent_min, employed_population_above_15_percent_max = wide_range_cal_data01(unemployment_rate_data, 10)
+        employed_population_workforce_percent_mean, employed_population_workforce_percent_median, employed_population_workforce_percent_min, employed_population_workforce_percent_max = wide_range_cal_data01(unemployment_rate_data, 11)
+        unemployment_mean, unemployment_median, unemployment_min_value, unemployment_max_value = wide_range_cal_data01(unemployment_rate_data, 12)
+
+    if gdp_exist and unemployment_exist:
+        year_data_set[input_year] = {
+            '國內生產毛額GDP(名目值,百萬元)': {'平均值': gdp_mean, '中位數': gdp_median, '最大數': gdp_max_value, '最小數': gdp_min_value},
+            "經濟成長率(%)": {'平均值': growth_rate_mean, '中位數': growth_rate_median, '最大數': growth_rate_max_value, '最小數': growth_rate_min_value},
+            "平均每人GDP(名目值,元)": {'平均值': person_gdp_mean, '中位數': person_gdp_median, '最大數': person_gdp_max, '最小數': person_gdp_min},
+            "平均每人GNI(名目值,元)": {'平均值': person_gni_mean, '中位數': person_gni_median, '最大數': person_gni_max, '最小數': person_gni_min},
+            "國民所得(名目值,百萬元)": {'平均值': gni_mean, '中位數': gni_median, '最大數': gni_max, '最小數': gni_min},
+            "平均匯率(元/美元)": {'平均值': exchange_rate_mean, '中位數': exchange_rate_median, '最大數': exchange_rate_max, '最小數': exchange_rate_min},
+            "平均每人所得(名目值,元)": {'平均值': income_per_person_mean, '中位數': income_per_person_median, '最大數': income_per_person_max, '最小數': income_per_person_min},
+            "國民所得毛額GNI(名目值,百萬元)": {'平均值': gni_mean, '中位數': gni_median, '最大數': gni_max, '最小數': gni_min},
+
+            '勞動力': {'平均值': workforce_mean, '中位數': workforce_median, '最大數': workforce_max_value, '最小數': workforce_min_value},
+            '失業率': {'平均值': unemployment_mean, '中位數': unemployment_median, '最大數': unemployment_max_value, '最小數': unemployment_min_value},
+            "15歲以上民間人口(千人)": {'平均值': population_above_15_mean, '中位數': population_above_15_median, '最大數': population_above_15_max, '最小數': population_above_15_min},
+            "勞動力(千人)": {'平均值': workforce_mean, '中位數': workforce_median, '最大數': workforce_max_value, '最小數': workforce_min_value},
+            "就業人數(千人)": {'平均值': employed_population_mean, '中位數': employed_population_median, '最大數': employed_population_max, '最小數': employed_population_min},
+            "失業人數(千人)": {'平均值': unemployed_population_mean, '中位數': unemployed_population_median, '最大數': unemployed_population_max, '最小數': unemployed_population_min},
+            "15歲以上民間人口占總人口數(%)": {'平均值': population_above_15_percent_mean, '中位數': population_above_15_percent_median, '最大數': population_above_15_percent_max, '最小數': population_above_15_percent_min},
+            "勞動力占總人口數(%)": {'平均值': workforce_percent_mean, '中位數': workforce_percent_median, '最大數': workforce_percent_max, '最小數': workforce_percent_min},
+            "勞動力參與率(%)": {'平均值': labor_force_participation_rate_mean, '中位數': labor_force_participation_rate_median, '最大數': labor_force_participation_rate_max, '最小數': labor_force_participation_rate_min},
+            "就業人口占總人口數(%)": {'平均值': employed_population_percent_mean, '中位數': employed_population_percent_median, '最大數': employed_population_percent_max, '最小數': employed_population_percent_min},
+            "就業人口占15歲以上民間人口(%)": {'平均值': employed_population_above_15_percent_mean, '中位數': employed_population_above_15_percent_median, '最大數': employed_population_above_15_percent_max, '最小數': employed_population_above_15_percent_min},
+            "就業人口占勞動力(%)": {'平均值': employed_population_workforce_percent_mean, '中位數': employed_population_workforce_percent_median, '最大數': employed_population_workforce_percent_max, '最小數': employed_population_workforce_percent_min}
+        }
+    elif gdp_exist and not unemployment_exist:
+        year_data_set[input_year] = {
+            '國內生產毛額GDP(名目值,百萬元)': {'平均值': gdp_mean, '中位數': gdp_median, '最大數': gdp_max_value, '最小數': gdp_min_value},
+            "經濟成長率(%)": {'平均值': growth_rate_mean, '中位數': growth_rate_median, '最大數': growth_rate_max_value, '最小數': growth_rate_min_value},
+            "平均每人GDP(名目值,元)": {'平均值': person_gdp_mean, '中位數': person_gdp_median, '最大數': person_gdp_max, '最小數': person_gdp_min},
+            "平均每人GNI(名目值,元)": {'平均值': person_gni_mean, '中位數': person_gni_median, '最大數': person_gni_max, '最小數': person_gni_min},
+            "國民所得(名目值,百萬元)": {'平均值': gni_mean, '中位數': gni_median, '最大數': gni_max, '最小數': gni_min},
+            "平均匯率(元/美元)": {'平均值': exchange_rate_mean, '中位數': exchange_rate_median, '最大數': exchange_rate_max, '最小數': exchange_rate_min},
+            "平均每人所得(名目值,元)": {'平均值': income_per_person_mean, '中位數': income_per_person_median, '最大數': income_per_person_max, '最小數': income_per_person_min},
+            "國民所得毛額GNI(名目值,百萬元)": {'平均值': gni_mean, '中位數': gni_median, '最大數': gni_max, '最小數': gni_min},
+
+            '勞動力': {'無資料'},
+            '失業率': {'無資料'},
+            "15歲以上民間人口(千人)": {'無資料'},
+            "勞動力(千人)": {'無資料'},
+            "就業人數(千人)": {'無資料'},
+            "失業人數(千人)": {'無資料'},
+            "15歲以上民間人口占總人口數(%)": {'無資料'},
+            "勞動力占總人口數(%)": {'無資料'},
+            "勞動力參與率(%)": {'無資料'},
+            "就業人口占總人口數(%)": {'無資料'},
+            "就業人口占15歲以上民間人口(%)": {'無資料'},
+            "就業人口占勞動力(%)": {'無資料'},
+        }
+        print(f"年份勞動力與就業年份{input_year}資料不存在")
+    elif not gdp_exist and unemployment_exist:
+        year_data_set[input_year] = {
+            '國內生產毛額GDP(名目值,百萬元)': {'無資料'},
+            "經濟成長率(%)": {'無資料'},
+            "平均每人GDP(名目值,元)": {'無資料'},
+            "平均每人GNI(名目值,元)": {'無資料'},
+            "國民所得(名目值,百萬元)": {'無資料'},
+            "平均匯率(元/美元)": {'無資料'},
+            "平均每人所得(名目值,元)": {'無資料'},
+            "國民所得毛額GNI(名目值,百萬元)":{'無資料'},
+
+            '勞動力': {'平均值': workforce_mean, '中位數': workforce_median, '最大數': workforce_max_value, '最小數': workforce_min_value},
+            '失業率': {'平均值': unemployment_mean, '中位數': unemployment_median, '最大數': unemployment_max_value, '最小數': unemployment_min_value},
+            "15歲以上民間人口(千人)": {'平均值': population_above_15_mean, '中位數': population_above_15_median, '最大數': population_above_15_max, '最小數': population_above_15_min},
+            "勞動力(千人)": {'平均值': workforce_mean, '中位數': workforce_median, '最大數': workforce_max_value, '最小數': workforce_min_value},
+            "就業人數(千人)": {'平均值': employed_population_mean, '中位數': employed_population_median, '最大數': employed_population_max, '最小數': employed_population_min},
+            "失業人數(千人)": {'平均值': unemployed_population_mean, '中位數': unemployed_population_median, '最大數': unemployed_population_max, '最小數': unemployed_population_min},
+            "15歲以上民間人口占總人口數(%)": {'平均值': population_above_15_percent_mean, '中位數': population_above_15_percent_median, '最大數': population_above_15_percent_max, '最小數': population_above_15_percent_min},
+            "勞動力占總人口數(%)": {'平均值': workforce_percent_mean, '中位數': workforce_percent_median, '最大數': workforce_percent_max, '最小數': workforce_percent_min},
+            "勞動力參與率(%)": {'平均值': labor_force_participation_rate_mean, '中位數': labor_force_participation_rate_median, '最大數': labor_force_participation_rate_max, '最小數': labor_force_participation_rate_min},
+            "就業人口占總人口數(%)": {'平均值': employed_population_percent_mean, '中位數': employed_population_percent_median, '最大數': employed_population_percent_max, '最小數': employed_population_percent_min},
+            "就業人口占15歲以上民間人口(%)": {'平均值': employed_population_above_15_percent_mean, '中位數': employed_population_above_15_percent_median, '最大數': employed_population_above_15_percent_max, '最小數': employed_population_above_15_percent_min},
+            "就業人口占勞動力(%)": {'平均值': employed_population_workforce_percent_mean, '中位數': employed_population_workforce_percent_median, '最大數': employed_population_workforce_percent_max, '最小數': employed_population_workforce_percent_min}
+        }
+        print(f"年份國民所得重要指標資料不存在")
+    else:
+        year_data_set[input_year] = {
+            '國內生產毛額GDP(名目值,百萬元)': {'無資料'},
+            "經濟成長率(%)": {'無資料'},
+            "平均每人GDP(名目值,元)": {'無資料'},
+            "平均每人GNI(名目值,元)": {'無資料'},
+            "國民所得(名目值,百萬元)": {'無資料'},
+            "平均匯率(元/美元)": {'無資料'},
+            "平均每人所得(名目值,元)": {'無資料'},
+            "國民所得毛額GNI(名目值,百萬元)":{'無資料'},
+
+            '勞動力': {'無資料'},
+            '失業率': {'無資料'},
+            "15歲以上民間人口(千人)": {'無資料'},
+            "勞動力(千人)": {'無資料'},
+            "就業人數(千人)": {'無資料'},
+            "失業人數(千人)": {'無資料'},
+            "15歲以上民間人口占總人口數(%)": {'無資料'},
+            "勞動力占總人口數(%)": {'無資料'},
+            "勞動力參與率(%)": {'無資料'},
+            "就業人口占總人口數(%)": {'無資料'},
+            "就業人口占15歲以上民間人口(%)": {'無資料'},
+            "就業人口占勞動力(%)": {'無資料'},
+        }
+
+    return year_data_set
+
+
+def plot_line_chart(years, data, title, ylabel):
+    plt.figure(figsize=(15, 10))
+    plt.plot(years, data, marker='o')
+    plt.title(title)
+    plt.xlabel('年份')
+    plt.ylabel(ylabel)
+    plt.grid(True)
+    plt.show()
+
+def plot_bar_chart(years, data, title, ylabel):
+    plt.figure(figsize=(15, 10))
+    plt.bar(years, data)
+    plt.title(title)
+    plt.xlabel('年份')
+    plt.ylabel(ylabel)
+    plt.grid(True)
+    plt.show()
+
+def plot_pie_chart(labels, data, title):
+    plt.figure(figsize=(10, 10))
+    plt.pie(data, labels=labels, autopct='%1.1f%%')
+    plt.title(title)
+    plt.show()
+
+def plot_scatter_chart(x_data, y_data, title, xlabel, ylabel):
+    plt.figure(figsize=(15, 10))
+    plt.scatter(x_data, y_data)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.grid(True)
+    plt.show()
+
+def plot_multi_line_chart(years, data_series, labels, title, ylabel):
+    plt.figure(figsize=(15, 10))
+    for data, label in zip(data_series, labels):
+        plt.plot(years, data, marker='o', label=label)
+    plt.title(title)
+    plt.xlabel('年份')
+    plt.ylabel(ylabel)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def plot_multi_bar_chart(years, data_series, labels, title, ylabel):
+    plt.figure(figsize=(15, 10))
+    bar_width = 0.2
+    index = list(range(len(years)))
+    
+    for i, (data, label) in enumerate(zip(data_series, labels)):
+        plt.bar([p + bar_width * i for p in index], data, bar_width, label=label)
+    
+    plt.title(title)
+    plt.xlabel('年份')
+    plt.ylabel(ylabel)
+    plt.xticks([p + bar_width for p in index], years)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def plot_two_pie_charts(year, data_dict, title):
+    fig, axes = plt.subplots(1, 2, figsize=(15, 10))
+    
+    if year in data_dict:
+        data1 = round(data_dict[year]['15歲以上民間人口占總人口數(%)']['平均值'], 2)
+        data2 = round(data_dict[year]['勞動力占總人口數(%)']['平均值'], 2)
+
+        # 第一個圓餅圖
+        labels1 = ['15歲以上民間人口占總人口數(%)', '其他']
+        sizes1 = [data1, 100 - data1]
+        axes[0].pie(sizes1, labels=labels1, autopct='%1.1f%%')
+        axes[0].set_title(f"{year} 年 15歲以上民間人口占總人口數的比例")
+
+        # 第二個圓餅圖
+        labels2 = ['勞動力占總人口數(%)', '其他']
+        sizes2 = [data2, 100 - data2]
+        axes[1].pie(sizes2, labels=labels2, autopct='%1.1f%%')
+        axes[1].set_title(f"{year} 年 勞動力占總人口數的比例")
+    
+    plt.suptitle(title)
+    plt.show()
+
+人力資源主要指標_mapping = {
+    0: "月",
+    1: "15歲以上民間人口(千人)",
+    2: "勞動力(千人)",
+    3: "就業者",
+    4: "失業者",
+    5: "非勞動力(千人)",
+    6: "參與率(%)",
+    7: "失業率(%)",
+    8: "農業",
+    9: "工業",
+    10: "服務業",
+    11: "新登記求供倍數(倍)"
+}
+
+人力資源主要指標_mapping = {
+    0: "月",
+    1: "15歲以上民間人口(千人)",
+    2: "勞動力(千人)",
+    3: "就業者",
+    4: "失業者",
+    5: "非勞動力(千人)",
+    6: "參與率(%)",
+    7: "失業率(%)",
+    8: "農業",
+    9: "工業",
+    10: "服務業",
+    11: "新登記求供倍數(倍)"
+}
+
+
+國民所得統計常用資料_mapping = {
+    0: "季", 1: "期中人口(人)", 2: "平均匯率(元/美元)", 3: "經濟成長率(%)",
+    4: "國內生產毛額GDP(名目值,百萬元)", 5: "國內生產毛額GDP(名目值,百萬美元)",
+    6: "平均每人GDP(名目值,元)", 7: "平均每人GDP(名目值,美元)",
+    8: "國民所得毛額GNI(名目值,百萬元)", 9: "國民所得毛額GNI(名目值,百萬美元)",
+    10: "平均每人GNI(名目值,元)", 11: "平均每人GNI(名目值,美元)",
+    12: "國民所得(名目值,百萬元)", 13: "國民所得(名目值,百萬美元)",
+    14: "平均每人所得(名目值,元)", 15: "平均每人所得(名目值,美元)"
+}
+
+人力資源主要指標_mapping = {
+    0: "月", 1: "總人口數(千人)", 2: "15歲以上民間人口(千人)", 3: "勞動力(千人)",
+    4: "就業人數(千人)", 5: "失業人數(千人)", 6: "15歲以上民間人口占總人口數(%)",
+    7: "勞動力占總人口數(%)", 8: "勞動力參與率(%)", 9: "就業人口占總人口數(%)",
+    10: "就業人口占15歲以上民間人口(%)", 11: "就業人口占勞動力(%)", 12: "失業率(%)"
+}
+
+
+def main():
+
+        print("\n1.投資率和儲蓄率的變化趨勢(折線圖)----數據提供年份:100 ~ 112\n2.就業結構比(柱狀圖)----數據提供年份:100 ~ 112\n3.歷年GDP、GNI的變化趨勢(折線圖)----數據提供年份:67 ~ 112\n4.不同年份的失業率、勞動力參與率、就業人數(柱狀圖)----數據提供年份:67 ~ 112\n5.15歲以上民間人口占總人口數的比例、勞動力占總人口數的比(特定年之圓餅圖)----數據提供年份:67 ~ 112\n6.失業率與經濟成長率之間的關係(散點圖)----數據提供年份:67 ~ 112\n")
+        chart_type = int(input("查詢----請輸入(1~6):"))
+        input01 = int(input("開始範圍："))
+        input02 = int(input("結束範圍："))
+
+        if input02 < input01:
+            print("請輸入正確的開始與結束範圍。")
+            return
+        
+        if 0 < chart_type < 3 :
+            if 100 <= input01 <= 112 or 100 <= input02 <= 112:
+                    print("請輸入有效範圍。")
+                    return
+
+            gdp_data = recursive_parse_data('勞動力與就業.txt')
+            people_data = recursive_parse_data('國民所得重要指標.txt')
+
+            Investment_rate = recursive_calculate_statistics(gdp_data, 7)
+            savings_rate = recursive_calculate_statistics(gdp_data, 8)
+
+            Employment_agriculture = recursive_calculate_statistics(people_data, 8)
+            Employment_industry = recursive_calculate_statistics(people_data, 9)
+            Employment_services = recursive_calculate_statistics(people_data, 10)
+
+            combined_data = merge_dictionaries(
+                {'投資率': Investment_rate},
+                {'儲蓄率': savings_rate},
+                {'就業結構比-農業': Employment_agriculture},
+                {'就業結構比-工業': Employment_industry},
+                {'就業結構比-服務業': Employment_services}
+            )
+            year_data_set = restructure_data(combined_data)
+
+            if chart_type == 1:
+                years = list(year_data_set.keys())
+                investment_rate_data = [round(year_data_set[year]['投資率']['平均值'], 2) for year in years if '投資率' in year_data_set[year]]
+                savings_rate_data = [round(year_data_set[year]['儲蓄率']['平均值'], 2) for year in years if '儲蓄率' in year_data_set[year]]
+                common_years = [year for year in years if '投資率' in year_data_set[year] and '儲蓄率' in year_data_set[year]]
+
+                plot_multi_line_chart(common_years, 
+                                    [investment_rate_data, savings_rate_data], 
+                                    ['投資率', '儲蓄率'], 
+                                    '投資率和儲蓄率的變化趨勢', '值')
+            elif chart_type == 2:
+                years = list(year_data_set.keys())
+                agriculture_data = [round(year_data_set[year]['就業結構比-農業']['平均值'], 2) for year in years if '就業結構比-農業' in year_data_set[year]]
+                industry_data = [round(year_data_set[year]['就業結構比-工業']['平均值'], 2) for year in years if '就業結構比-工業' in year_data_set[year]]
+                services_data = [round(year_data_set[year]['就業結構比-服務業']['平均值'], 2) for year in years if '就業結構比-服務業' in year_data_set[year]]
+                common_years = [year for year in years if '就業結構比-農業' in year_data_set[year] and '就業結構比-工業' in year_data_set[year] and '就業結構比-服務業' in year_data_set[year]]
+
+                plot_multi_bar_chart(common_years, 
+                                    [agriculture_data, industry_data, services_data], 
+                                    ['農業', '工業', '服務業'], 
+                                    '就業結構比', '值')
+        elif 2 < chart_type < 7 :
+
+            if 67 <= input01 <= 112 or 67 <= input02 <= 112:
+                    print("請輸入有效範圍。")
+                    return
+
+            sorce = input01
+            range_year = [sorce] 
+            year_data_set  = {}
+            for i in range(input02 - input01):
+                sorce += 1
+                range_year.append(sorce)
+            for input_year in range_year:
+                year_data_set = set_input01(year_data_set, input_year)
+
+            if chart_type == 3:
+                years = list(year_data_set.keys())
+                gdp_data = [round(year_data_set[year]['國內生產毛額GDP(名目值,百萬元)']['平均值'], 2) for year in years if '國內生產毛額GDP(名目值,百萬元)' in year_data_set[year]]
+                gni_data = [round(year_data_set[year]['國民所得毛額GNI(名目值,百萬元)']['平均值'], 2) for year in years if '國民所得毛額GNI(名目值,百萬元)' in year_data_set[year]]
+                common_years = [year for year in years if '國內生產毛額GDP(名目值,百萬元)' in year_data_set[year] and '國民所得毛額GNI(名目值,百萬元)' in year_data_set[year]]
+    
+                plot_multi_line_chart(common_years, 
+                                    [gdp_data, gni_data], 
+                                    ['GDP', 'GNI'], 
+                                    '歷年GDP、GNI的變化趨勢', '值')
+
+            elif chart_type == 4:
+                years = list(year_data_set.keys())
+                unemployment_rate_data = [round(year_data_set[year]['失業率']['平均值'], 2) for year in years if '失業率' in year_data_set[year]]
+                labor_participation_rate_data = [round(year_data_set[year]['勞動力參與率(%)']['平均值'], 2) for year in years if '勞動力參與率(%)' in year_data_set[year]]
+                employment_data = [round(year_data_set[year]['就業人口占總人口數(%)']['平均值'], 2) for year in years if '就業人口占總人口數(%)' in year_data_set[year]]
+                common_years = [year for year in years if '失業率' in year_data_set[year] and '勞動力參與率(%)' in year_data_set[year] and '就業人口占總人口數(%)' in year_data_set[year]]
+            
+                plot_multi_bar_chart(common_years, 
+                                    [unemployment_rate_data, labor_participation_rate_data, employment_data], 
+                                    ['失業率', '勞動力參與率', '就業人口占總人口數(%)'], 
+                                    '不同年份的失業率、勞動力參與率、就業人口占總人口數(%)', '百分比(%)')
+            if chart_type == 5:
+                specific_year = int(input(f"請輸入特定年份,目前讀入範圍為{input01}~{input02}˙："))  # 將輸入轉換為整數
+                if specific_year in year_data_set and '15歲以上民間人口占總人口數(%)' in year_data_set[specific_year] and '勞動力占總人口數(%)' in year_data_set[specific_year]:
+                    plot_two_pie_charts(specific_year, year_data_set, "15歲以上民間人口和勞動力占總人口數的比例")
+                else:
+                    print(f"年份 {specific_year} 的數據不完整。")
+                    
+            elif chart_type == 6:
+                years = list(year_data_set.keys())
+                economic_growth_rate_data = [round(year_data_set[year]['經濟成長率(%)']['平均值'], 2) for year in years if '經濟成長率(%)' in year_data_set[year]]
+                unemployment_rate_data = [round(year_data_set[year]['失業率']['平均值'], 2) for year in years if '失業率' in year_data_set[year]]
+                common_years = [year for year in years if '經濟成長率(%)' in year_data_set[year] and '失業率' in year_data_set[year]]
+
+                plot_scatter_chart([economic_growth_rate_data[i] for i in range(len(common_years))], 
+                                [unemployment_rate_data[i] for i in range(len(common_years))], 
+                                '失業率與經濟成長率之間的關係', '經濟成長率(%)', '失業率(%)')
+                
+if __name__ == "__main__":
+    main()
